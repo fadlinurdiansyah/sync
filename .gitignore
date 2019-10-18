@@ -1,0 +1,6 @@
+vendor/*
+temp/*
+app-log.txt
+sync-log.txt
+sync-log-aws.txt
+sync-mysql-log.txt
