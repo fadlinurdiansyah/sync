@@ -41,6 +41,9 @@ switch ($_GET['type']) {
     case 'send_mail_wo_over_due':
         sendMailWOOverDue();
         break;
+    case 'send_mail_po_price_more_than_std':
+        sendMailPOPriceMoreTanStd();
+        break;
 }
 
 function sendMailSIC()
@@ -107,7 +110,7 @@ function sendMailSIC()
         ],
         [
             'name'     => 'subject',
-            'contents' => $data_mail['subject'] . date('d F Y')
+            'contents' => $data_mail['subject'] . ' ' . date('d F Y')
         ],
         [
             'name'     => 'msg',
@@ -201,7 +204,7 @@ function sendMailWOOverDue()
         ],
         [
             'name'     => 'subject',
-            'contents' => $data_mail['subject'] . date('d F Y')
+            'contents' => $data_mail['subject'] . ' ' . date('d F Y')
         ],
         [
             'name'     => 'msg',
@@ -227,4 +230,128 @@ function sendMailWOOverDue()
     echo $response->getBody()->getContents();
 }
 
-// function 
+// Send mail Report Harga PO Lebih dari Harga Standar
+function sendMailPOPriceMoreTanStd()
+{
+    global $consgedb;
+    global $consyncdb;
+
+    /* Get data Report sgedb */
+    $sqlWo = " SELECT * from (SELECT 
+            a.wono,
+            b.date,
+            b.pono,
+            vendor.nama,
+            a.stcd,
+            a.desc,
+            a.qtyodr,
+            (CASE
+                WHEN b.curr = 'IDR' THEN (a.gross - (a.gross * (b.disc / b.jumlah)))
+                WHEN b.curr <> 'IDR' THEN ((a.gross - (a.gross * (b.disc / b.jumlah))) * f.tkrsac)
+            END) AS price,
+            ifnull(msprice.pur,0) as stdprice,
+            msprice.remark
+        FROM
+            podt a
+                LEFT JOIN
+            pohd b ON a.pono = b.pono
+                LEFT JOIN
+            tbkurs f ON CONCAT(f.tkrskd, f.tkrsdk) = CONCAT(b.curr,
+                    YEAR(b.`date`),
+                    MID(b.`date`, 6, 2))
+                LEFT JOIN
+            msprice ON a.stcd = msprice.stcd
+                LEFT JOIN
+            vendor ON b.venid = vendor.venid
+        WHERE
+            a.status <> 'C'
+                AND b.date = CURDATE() - 1)
+                -- '2019-10-18') 
+                as compare where stdprice <> 0 and price > stdprice ";
+    $stmt = $consgedb->prepare($sqlWo);
+    $stmt->execute();
+    $result = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    /* die if theres no record */
+    if (count($result) == 0) die;
+
+    // $data = [];
+    $no = 0;
+    $date = date('d/m/Y', strtotime($result[0]['date']));
+    $content = "<h2>PT. SEKAWAN GLOBAL ENGINEERING</h2>";
+    $content .= "<h3>Report Harga PO Lebih dari Harga Standar</h3>";
+    $content .= "<h3>Periode " . $date . "</h3>";
+    $content .= "<table border='1' cellspacing='0' cellpadding='3'>";
+    $content .= "<tr>
+            <th>NO</th>
+            <th>PO NO</th>
+            <th>DATE</th>
+            <th>SUPPLIER</th>
+            <th>WONO</th>
+            <th>ITEM CODE</th>
+            <th>ITEM NAME</th>
+            <th>QTY</th>
+            <th>HARGA</th>
+            <th>STD HARGA</th>
+            <th>SELISIH HARGA</th>
+            <th>SELISIH (%)</th>
+            <th>NOTE STD PRICE</th>
+        </tr>";
+    foreach ($result as $key => $row) {
+        $no++;
+        $qty = floatval($row['qtyodr']);
+        $std_price = floatval($row['stdprice']);
+        $price = floatval($row['price']);
+        $selisih = $price - $std_price;
+        $percent = round($selisih / $row['stdprice'] * 100);
+        $content .= "<tr>
+            <td>{$no}</td>
+            <td>{$row['pono']}</td>
+            <td>{$date}</td>
+            <td>{$row['nama']}</td>
+            <td>{$row['wono']}</td>
+            <td>{$row['stcd']}</td>
+            <td>{$row['desc']}</td>
+            <td style='text-align:right;'>{$qty}</td>
+            <td style='text-align:right;'>" . number_format($std_price) . "</td>
+            <td style='text-align:right;'>" . number_format($price) . "</td>
+            <td style='text-align:right;'>" . number_format($selisih) . "</td>
+            <td style='text-align:right;'>{$percent} %</td>
+            <td>{$row['remark']}</td>
+        </tr>";
+    }
+    $content .= "</table>";
+
+    /* Data Mail from sync_db.send_mail */
+    $sql_get = " SELECT * FROM send_mail WHERE name = '" . $_GET['type'] . "' ";
+    $stmt = $consyncdb->prepare($sql_get);
+    $stmt->execute();
+
+    $data_mail = $stmt->fetch(PDO::FETCH_ASSOC);
+    $multipart = [
+        [
+            'name'     => 'token',
+            'contents' => '9ab6578fc863f7ea13cf108bd6c6e499'
+        ],
+        [
+            'name'     => 'subject',
+            'contents' => $data_mail['subject'] . ' ' . $date
+        ],
+        [
+            'name'     => 'msg',
+            'contents' => $content . "Pesan ini dikirim secara otomatis, jangan dibalas!"
+        ],
+
+    ];
+
+    $params = stringToArrayParam($multipart, ['to' => $data_mail['to'], 'cc' => $data_mail['cc']]);
+
+    /* Send Request */
+    $url = 'https://apps.sekawanpm.com/mail.php';
+    $client = new Client();
+    $response = $client->request('POST', $url, [
+        'multipart' => $params
+    ]);
+
+    echo $response->getBody()->getContents();
+}
