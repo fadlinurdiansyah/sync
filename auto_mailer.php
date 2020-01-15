@@ -21,8 +21,8 @@ foreach (glob("../auto_mailer.php*") as $filename) {
  * created by @abdmun8 2019
  */
 
-$consgedb = new PDO("mysql:host=localhost;dbname=sgedb", 'root', 's3k4w4n');
-$consyncdb = new PDO("mysql:host=localhost;dbname=sync_db", 'root', 's3k4w4n');
+$consgedb = new PDO("mysql:host=server;dbname=sgedb", 'root', 's3k4w4n');
+$consyncdb = new PDO("mysql:host=server;dbname=sync_db", 'root', 's3k4w4n');
 
 $type = isset($_GET['type']) ? TRUE : FALSE;
 if (!$type) {
