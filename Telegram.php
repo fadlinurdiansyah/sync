@@ -75,7 +75,7 @@ if (isset($_POST['token']) && $_POST['token'] == '82027888c5bb8fc395411cb6804a06
             $message_sent++;
         }
 
-        $message_sent . ' of 1';
+        $notes = $message_sent . ' of 1';
     }
 
     $result = [
