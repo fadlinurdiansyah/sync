@@ -84,11 +84,17 @@ function getAbsensiFromFingerPrint()
         $stmt = $mysql->prepare($sql);
         $stmt->execute();
         $mysql->commit();
+        $msg = 'Sinkronisasi Sukses!';
+        $success = TRUE;
         writeLog('Sukses!');
     } catch (Exception $e) {
         $mysql->rollBack();
+        $msg = $e;
+        $success = FALSE;
         writeLog($e);
     }
+    
+    echo json_encode(['success' => $success, 'message' => $msg]);
 }
 
 function writeLog($message)
