@@ -127,7 +127,7 @@ function sendMailSIC()
 
     /* Send Request */
     $client = new Client();
-    $response = $client->request('POST', 'https://apps.sekawanpm.com/mail.php', [
+    $response = $client->request('POST', 'http://webserver/sekawan-site-menu/mail.php', [
         'multipart' => $params
     ]);
 
@@ -220,7 +220,7 @@ function sendMailWOOverDue()
     $params = stringToArrayParam($multipart, ['to' => $data_mail['to'], 'cc' => $data_mail['cc']]);
 
     /* Send Request */
-    $url = 'https://apps.sekawanpm.com/mail.php';
+    $url = 'http://webserver/sekawan-site-menu/mail.php';
     // $url = '192.168.3.224/sekawan-site-menu/mail.php';
     $client = new Client();
     $response = $client->request('POST', $url, [
@@ -313,8 +313,8 @@ function sendMailPOPriceMoreTanStd()
             <td>{$row['stcd']}</td>
             <td>{$row['desc']}</td>
             <td style='text-align:right;'>{$qty}</td>
-            <td style='text-align:right;'>" . number_format($std_price) . "</td>
             <td style='text-align:right;'>" . number_format($price) . "</td>
+            <td style='text-align:right;'>" . number_format($std_price) . "</td>
             <td style='text-align:right;'>" . number_format($selisih) . "</td>
             <td style='text-align:right;'>{$percent} %</td>
             <td>{$row['remark']}</td>
@@ -347,7 +347,7 @@ function sendMailPOPriceMoreTanStd()
     $params = stringToArrayParam($multipart, ['to' => $data_mail['to'], 'cc' => $data_mail['cc']]);
 
     /* Send Request */
-    $url = 'https://apps.sekawanpm.com/mail.php';
+    $url = 'http://webserver/sekawan-site-menu/mail.php';
     $client = new Client();
     $response = $client->request('POST', $url, [
         'multipart' => $params
