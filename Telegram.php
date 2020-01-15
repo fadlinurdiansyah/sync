@@ -11,6 +11,8 @@
  * You can send to multiple person
  */
 
+header("Access-Control-Allow-Origin: *");
+
 class Telegram
 {
     var $token;
