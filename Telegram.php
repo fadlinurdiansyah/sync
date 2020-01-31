@@ -46,6 +46,34 @@ class Telegram
         $result = file_get_contents($url, false, $context);
         return $result;
     }
+
+    function delMessage($chat_id, $msg_id)
+    {
+
+        $postdata = http_build_query(
+            array(
+                'chat_id' => $chat_id,
+                'message_id' => $msg_id,
+                'parse_mode' => 'HTML'
+            )
+        );
+
+        $opts = array(
+            'http' =>
+            array(
+                'method'  => 'POST',
+                'header'  => 'Content-Type: application/x-www-form-urlencoded',
+                'content' => $postdata
+            )
+        );
+
+        $context  = stream_context_create($opts);
+
+        $url = "https://api.telegram.org/bot{$this->token}/deleteMessage";
+
+        $result = file_get_contents($url, false, $context);
+        return $result;
+    }
 }
 
 // class instance
@@ -53,29 +81,42 @@ $telegram = new Telegram();
 
 if (isset($_POST['token']) && $_POST['token'] == '82027888c5bb8fc395411cb6804a066c') {
     $chat_id = $_POST['telegram_id'];
+    $msg_id = $_POST['message_id'];
     $text = $_POST['message'];
     $message_sent = 0;
     $notes = "";
-    // check if chat id is array
-    if (is_array($chat_id)) {
-        $length = count($chat_id);
-        foreach ($chat_id as $key => $value) {
-            $response = $telegram->sendMessage($value, $text);
-            $data = json_decode($response);
-            if ($data->ok == TRUE) {
-                $message_sent++;
-            }
-        }
 
-        $notes = $message_sent . ' of ' . $length;
-    } else {
-        $response = $telegram->sendMessage($chat_id, $text);
+    if (isset($msg_id)) {
+        $response = $telegram->delMessage($chat_id, $msg_id);
         $data = json_decode($response);
         if ($data->ok == TRUE) {
             $message_sent++;
         }
 
-        $notes = $message_sent . ' of 1';
+        $notes = "Message delete : " . $message_sent . ' of 1';
+    } else {
+
+        // check if chat id is array
+        if (is_array($chat_id)) {
+            $length = count($chat_id);
+            foreach ($chat_id as $key => $value) {
+                $response = $telegram->sendMessage($value, $text);
+                $data = json_decode($response);
+                if ($data->ok == TRUE) {
+                    $message_sent++;
+                }
+            }
+
+            $notes = $message_sent . ' of ' . $length;
+        } else {
+            $response = $telegram->sendMessage($chat_id, $text);
+            $data = json_decode($response);
+            if ($data->ok == TRUE) {
+                $message_sent++;
+            }
+
+            $notes = $message_sent . ' of 1';
+        }
     }
 
     $result = [
@@ -87,3 +128,6 @@ if (isset($_POST['token']) && $_POST['token'] == '82027888c5bb8fc395411cb6804a06
 } else {
     echo json_encode(['success' => FALSE, 'message' => 'Token salah!']);
 }
+
+// Delete Message Telegram
+// https://api.telegram.org/botTOKEN/deleteMessage?chat_id=CID&message_id=MID
