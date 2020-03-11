@@ -127,7 +127,7 @@ function sendMailSIC()
 
     /* Send Request */
     $client = new Client();
-    $response = $client->request('POST', 'http://webserver/sekawan-site-menu/mail.php', [
+    $response = $client->request('POST', 'http://192.168.3.21/sekawan-site-menu/mail.php', [
         'multipart' => $params
     ]);
 
@@ -220,7 +220,7 @@ function sendMailWOOverDue()
     $params = stringToArrayParam($multipart, ['to' => $data_mail['to'], 'cc' => $data_mail['cc']]);
 
     /* Send Request */
-    $url = 'http://webserver/sekawan-site-menu/mail.php';
+    $url = 'http://192.168.3.21/sekawan-site-menu/mail.php';
     // $url = '192.168.3.224/sekawan-site-menu/mail.php';
     $client = new Client();
     $response = $client->request('POST', $url, [
@@ -347,7 +347,7 @@ function sendMailPOPriceMoreTanStd()
     $params = stringToArrayParam($multipart, ['to' => $data_mail['to'], 'cc' => $data_mail['cc']]);
 
     /* Send Request */
-    $url = 'http://webserver/sekawan-site-menu/mail.php';
+    $url = 'http://192.168.3.21/sekawan-site-menu/mail.php';
     $client = new Client();
     $response = $client->request('POST', $url, [
         'multipart' => $params
