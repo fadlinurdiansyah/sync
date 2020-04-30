@@ -53,42 +53,53 @@ function sendMailSIC()
 
     /* Get data Report sgedb */
     $sql = " SELECT 
-            stcd,nama, spek, maker, uom, buffer, reorder, bal_stock, prouts, poouts,
-            IF(IF(bal_stock <= reorder,
-                    buffer - prouts - poouts ,
-                    0) < 0,
-                0,
-                IF(bal_stock <= reorder,
-                    buffer - prouts - poouts,
-                    0)) AS advice
-        FROM
-            (SELECT 
-                mstchd.stcd,
-                    mstchd.nama,
-                    mstchd.spek,
-                    mstchd.maker,
-                    mstchd.uom,
-                    mstchd.buffer,
-                    mstchd.reorder,
-                    IFNULL(mstcdt.begbal, 0) AS begbal,
-                    IFNULL(mstcdt.receive, 0) AS recive,
-                    IFNULL(mstcdt.issue, 0) AS issue,
-                    IFNULL(((mstcdt.begbal + mstcdt.receive) - mstcdt.issue), 0) AS bal_stock,
-                    COALESCE(prpo_outs.outspo,0) as prouts,
-                    COALESCE(prpo_outs.outsrecive,0) as poouts
-            FROM
-                mstchd
-            LEFT JOIN (SELECT 
-                *
-            FROM
-                mstcdt
-            WHERE
-                wono IN ('INV' , 'CNS')) AS mstcdt ON mstchd.stcd = mstcdt.stcd
-            LEFT JOIN prpo_outs ON prpo_outs.stcd = mstcdt.stcd
-            WHERE
-                mstchd.buffer > 0) AS SIC
+                    stcd,
+                    nama,
+                    spek,
+                    maker,
+                    uom,
+                    buffer,
+                    reorder,
+                    bal_stock,
+                    prouts,
+                    poouts,
+                    IF(IF(bal_stock <= reorder,
+                            buffer - prouts - poouts,
+                            0) < 0,
+                        0,
+                        IF(bal_stock <= reorder,
+                            buffer - prouts - poouts,
+                            0)) AS advice
+                FROM
+                    (SELECT 
+                        mstchd.stcd,
+                            mstchd.nama,
+                            mstchd.spek,
+                            mstchd.maker,
+                            mstchd.uom,
+                            mstchd.buffer,
+                            mstchd.reorder,
+                            IFNULL(mstcdt.begbal, 0) AS begbal,
+                            IFNULL(mstcdt.receive, 0) AS recive,
+                            IFNULL(mstcdt.issue, 0) AS issue,
+                            IFNULL(((mstcdt.begbal + mstcdt.receive) - mstcdt.issue), 0) AS bal_stock,
+                            COALESCE(prpo_outs.outspo, 0) AS prouts,
+                            COALESCE(prpo_outs.outsrecive, 0) AS poouts
+                    FROM
+                        mstchd
+                    LEFT JOIN (SELECT 
+                        stcd,wono,sum(begbal) as begbal, sum(issue) as issue, sum(receive) as receive
+                    FROM
+                        mstcdt
+                    WHERE
+                        wono IN ('INV' , 'CNS') group by stcd) AS mstcdt ON mstchd.stcd = mstcdt.stcd
+                    LEFT JOIN prpo_outs ON prpo_outs.stcd = mstcdt.stcd
+                    WHERE
+                        mstchd.buffer > 0) AS SIC
                 WHERE
-            (sic.bal_stock + sic.prouts + sic.poouts ) < sic.buffer ";
+                    (sic.bal_stock + sic.prouts + sic.poouts) < sic.buffer
+                        AND stcd LIKE 'CNS%'
+                HAVING advice > 0";
     $stmt = $consgedb->prepare($sql);
     $stmt->execute();
     $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
