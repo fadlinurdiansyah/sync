@@ -13,7 +13,7 @@ foreach (glob("../sync-sqlsrv.php@type=*") as $filename) {
 }
 
 $srvName  = "server\\sqlexpress, 49170"; //srvName\instanceName, portNumber (default is 1433)
-$connInfo = array("Database" => "Anviz", "UID" => "absensi", "PWD" => "absensi");
+$connInfo = array("Database" => "FP", "UID" => "sa", "PWD" => "s3k4w4n");
 $sqlsrv   = sqlsrv_connect($srvName, $connInfo);
 $mysql    = new PDO("mysql:host=localhost;dbname=sgedb", 'root', 's3k4w4n');
 
