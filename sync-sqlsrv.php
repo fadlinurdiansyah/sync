@@ -64,17 +64,22 @@ function getAbsensiFromFingerPrint()
     while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
         $row['CheckTime'] = date_format($row['CheckTime'], 'Y-m-d H:i:s');
         $records[]           = $row;
-
     }
     $col_arr = array_keys($records[0]);
     $col     = implode('`,`', $col_arr);
     $sql     = "REPLACE INTO `CheckInOut` (`" . $col . "`) VALUES ";
     $values = "";
     foreach ($records as $key => $val) {
+        if ($val['CheckType'] == 0) {
+            $val['CheckType'] = 'I';
+        } else {
+            $val['CheckType'] = 'O';
+        }
         $val['Checked'] = 0;
         $val_arr = array_values($val);
         $val     = implode("','", $val_arr);
         $values .= "('" . $val . "'),";
+        
     }
     $values = substr($values, 0, strlen($values) - 1);
     $sql  = $sql.$values;
