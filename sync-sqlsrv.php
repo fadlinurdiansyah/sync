@@ -53,7 +53,7 @@ function getAbsensiFromFingerPrint()
 
     $today = date_create(date('Y-m-d'));
     $dt    = date_format(date_sub($today, date_interval_create_from_date_string("$days days")), 'Y-m-d H:i:s');
-    $sql   = "SELECT * FROM CheckInOut where CheckTime >= '$dt'";
+    $sql   = "SELECT Userid,CheckTime,CheckType,Sensorid,Logid,Checked,WorkType,AttFlag FROM CheckInOut where CheckTime >= '$dt'";
     $stmt  = sqlsrv_query($sqlsrv, $sql);
     if ($stmt === false) {
         die(print_r(sqlsrv_errors(), true));
