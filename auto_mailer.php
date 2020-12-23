@@ -44,6 +44,9 @@ switch ($_GET['type']) {
     case 'send_mail_po_price_more_than_std':
         sendMailPOPriceMoreTanStd();
         break;
+    case 'send_mail_ts_non_wo':
+        sendMailTSnonWO();
+        break;
 }
 
 function sendMailSIC()
@@ -361,6 +364,133 @@ function sendMailPOPriceMoreTanStd()
     $url = 'http://192.168.3.21/sekawan-site-menu/mail.php';
     $client = new Client();
     $response = $client->request('POST', $url, [
+        'multipart' => $params
+    ]);
+
+    echo $response->getBody()->getContents();
+}
+
+function sendMailTSnonWO()
+{
+    global $consgedb;
+    global $consyncdb;
+    $absTS = [];
+    $absHoliday = [];
+
+    /* Get data Report sgedb */
+    $sql = "SELECT 
+                th.*, person.nama, person.departemen
+            FROM
+                ts_register th
+                    LEFT JOIN
+                personal person ON th.nik = person.id_personalia
+            WHERE
+                th.tgl = curdate()-1
+                    AND th.wono IN ('OT20' , 'RM20', 'NOJB')
+            HAVING departemen <> 'MNFT'
+            ORDER BY person.departemen , th.nik";
+    $stmt = $consgedb->prepare($sql);
+    $stmt->execute();
+    $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+
+    $sql = "SELECT 
+                a.nik,
+                b.nama,
+                b.departemen,
+                tsreg.date,
+                b.tgl_resign,
+                b.status_karyawan,
+                tsreg.duration AS TS
+            FROM
+                mstTS a
+                    LEFT JOIN
+                (SELECT 
+                    tschedulework.nik,
+                    tschedulework.date,
+                        ts_register.tgl,
+                        (CASE
+                            WHEN ts_register.absen = 'C' THEN 'C'
+                            WHEN ts_register.absen = 'S' THEN 'S'
+                            WHEN ts_register.absen = 'A' THEN 'A'
+                            WHEN tschedulework.schedule = 0 THEN 'O'
+                            WHEN tschedulework.schedule = 3 THEN 'O'
+                            WHEN tschedulework.schedule = 2 THEN 'O'
+                            ELSE SUM(LEFT(IFNULL(duration, 0), 2)) + SUM(RIGHT(IFNULL(duration, 0), 2) / 60)
+                        END) AS duration
+                FROM
+                    tschedulework
+                LEFT JOIN (SELECT 
+                    nik, duration, absen, tgl
+                FROM
+                    ts_register
+                WHERE
+                    tgl = CURDATE() - 1) AS ts_register ON tschedulework.nik = ts_register.nik
+                    AND tschedulework.date = ts_register.tgl
+                WHERE
+                    tschedulework.date = CURDATE() - 1
+                GROUP BY tschedulework.nik) AS tsreg ON a.nik = tsreg.nik
+                    LEFT JOIN
+                personal b ON a.nik = b.id_personalia
+            WHERE
+                b.departemen LIKE '%%%'
+                    AND tsreg.duration IS NULL
+                    OR tsreg.duration < 8
+            HAVING tgl_resign = '0000-00-00'
+                AND departemen <> 'MNFT'
+                AND status_karyawan IN ('Habis Kontrak' , 'Karyawan Kontrak',
+                'Karyawan Tetap',
+                'Magang')
+            ORDER BY b.departemen;";
+
+    $stmt = $consgedb->prepare($sql);
+    $stmt->execute();
+    $result = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    foreach ($result as $key => $value) {
+        if ($value['TS'] == 'A' || $value['TS'] == 'C' || $value['TS'] == 'S' || $value['TS'] == 'I' || $value['TS'] == 'O') {
+            $absHoliday[] = $value;
+        } else {
+
+            $absTS[] = $value;
+        }
+    }
+
+    /* Data Mail from sync_db.send_mail */
+    $sql_get = " SELECT * FROM send_mail WHERE name = '" . $_GET['type'] . "' ";
+    $stmt = $consyncdb->prepare($sql_get);
+    $stmt->execute();
+
+    /* Title Document */
+    $title_document = "temp/Report_TS_NON_WO_" . date('dmY', strtotime('yesterday')) . ".xlsx";
+    require_once 'views/report_ts_non_wo.php';
+
+    $data_mail = $stmt->fetch(PDO::FETCH_ASSOC);
+    $multipart = [
+        [
+            'name'     => 'token',
+            'contents' => '9ab6578fc863f7ea13cf108bd6c6e499'
+        ],
+        [
+            'name'     => 'subject',
+            'contents' => $data_mail['subject'] . ' ' . date('d F Y', strtotime('yesterday'))
+        ],
+        [
+            'name'     => 'msg',
+            'contents' => $data_mail['msg']
+        ],
+        [
+            'name'     => 'file',
+            'contents' => fopen($title_document, 'r')
+        ]
+
+    ];
+
+    $params = stringToArrayParam($multipart, ['to' => $data_mail['to'], 'cc' => $data_mail['cc']]);
+
+    /* Send Request */
+    $client = new Client();
+    $response = $client->request('POST', 'http://192.168.3.21/sekawan-site-menu/mail.php', [
         'multipart' => $params
     ]);
 
