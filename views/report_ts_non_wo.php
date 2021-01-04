@@ -108,7 +108,7 @@ foreach ($data as $key => $value) {
     $activeSheet->setCellValue('C' . $row, $value['tgl']);
     $activeSheet->setCellValue('G' . $row, $value['wono']);
     $activeSheet->setCellValue('H' . $row, $value['activity']);
-    $activeSheet->setCellValue('I' . $row, $value['duration']);
+    $activeSheet->setCellValue('I' . $row, $value['dur']);
     $activeSheet->getStyle("A$row:I$row")->applyFromArray(
         [
             'borders' => [
@@ -124,6 +124,12 @@ foreach ($data as $key => $value) {
         ]
     );
 }
+
+$rowSum = $row + 1;
+$activeSheet->setCellValue('H' . $rowSum, "TOTAL");
+$activeSheet->setCellValue('I' . $rowSum, '=SUM(I6:I' . $row . ')');
+$activeSheet->getStyle("H" . $rowSum . ":I" . $rowSum)->getFont()->setSize(14);
+$activeSheet->getStyle("H" . $rowSum . ":I" . $rowSum)->getFont()->setBold(true);
 
 
 $rowTitleAbsenTS = $row + 4;

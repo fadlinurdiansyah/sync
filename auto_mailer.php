@@ -47,6 +47,9 @@ switch ($_GET['type']) {
     case 'send_mail_ts_non_wo':
         sendMailTSnonWO();
         break;
+    case 'send_mail_ts_non_spk':
+        sendMailTSnonSPK();
+        break;
 }
 
 function sendMailSIC()
@@ -377,9 +380,28 @@ function sendMailTSnonWO()
     $absTS = [];
     $absHoliday = [];
 
-    /* Get data Report sgedb */
-    $sql = "SELECT 
-                th.*, person.nama, person.departemen
+    $sqlCek = "SELECT 
+                    count(nik) as nik
+                FROM
+                    personal
+                        INNER JOIN
+                    tschedulework sch ON personal.id_personalia = sch.nik
+                WHERE
+                    sch.`date` = CURDATE() -1
+                        AND sch.`schedule` = 1
+                        AND personal.status_karyawan in ('Karyawan Tetap','Karyawan Kontrak')";
+    $stmt = $consgedb->prepare($sqlCek);
+    $stmt->execute();
+    $cekData = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+
+    if ($cekData[0] == 0) {
+        return;
+    } else {
+
+        /* Get data Report sgedb */
+        $sql = "SELECT 
+                th.*,(LEFT(IFNULL(th.duration, 0), 2) + RIGHT(IFNULL(th.duration, 0), 2) / 60) as dur, person.nama, person.departemen
             FROM
                 ts_register th
                     LEFT JOIN
@@ -389,12 +411,11 @@ function sendMailTSnonWO()
                     AND th.wono IN ('OT20' , 'RM20', 'NOJB')
             HAVING departemen <> 'MNFT'
             ORDER BY person.departemen , th.nik";
-    $stmt = $consgedb->prepare($sql);
-    $stmt->execute();
-    $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $stmt = $consgedb->prepare($sql);
+        $stmt->execute();
+        $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-
-    $sql = "SELECT 
+        $sql = "SELECT 
                 a.nik,
                 b.nama,
                 b.departemen,
@@ -443,56 +464,312 @@ function sendMailTSnonWO()
                 'Magang')
             ORDER BY b.departemen;";
 
-    $stmt = $consgedb->prepare($sql);
-    $stmt->execute();
-    $result = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $stmt = $consgedb->prepare($sql);
+        $stmt->execute();
+        $result = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    foreach ($result as $key => $value) {
-        if ($value['TS'] == 'A' || $value['TS'] == 'C' || $value['TS'] == 'S' || $value['TS'] == 'I' || $value['TS'] == 'O') {
-            $absHoliday[] = $value;
-        } else {
+        foreach ($result as $key => $value) {
+            if ($value['TS'] == 'A' || $value['TS'] == 'C' || $value['TS'] == 'S' || $value['TS'] == 'I' || $value['TS'] == 'O') {
+                $absHoliday[] = $value;
+            } else {
 
-            $absTS[] = $value;
+                $absTS[] = $value;
+            }
         }
+
+        /* Data Mail from sync_db.send_mail */
+        $sql_get = " SELECT * FROM send_mail WHERE name = '" . $_GET['type'] . "' ";
+        $stmt = $consyncdb->prepare($sql_get);
+        $stmt->execute();
+
+        /* Title Document */
+        $title_document = "temp/Report_TS_NON_WO_" . date('dmY', strtotime('yesterday')) . ".xlsx";
+        require_once 'views/report_ts_non_wo.php';
+
+        $data_mail = $stmt->fetch(PDO::FETCH_ASSOC);
+        $multipart = [
+            [
+                'name'     => 'token',
+                'contents' => '9ab6578fc863f7ea13cf108bd6c6e499'
+            ],
+            [
+                'name'     => 'subject',
+                'contents' => $data_mail['subject'] . ' ' . date('d F Y', strtotime('yesterday'))
+            ],
+            [
+                'name'     => 'msg',
+                'contents' => $data_mail['msg']
+            ],
+            [
+                'name'     => 'file',
+                'contents' => fopen($title_document, 'r')
+            ]
+
+        ];
+
+        $params = stringToArrayParam($multipart, ['to' => $data_mail['to'], 'cc' => $data_mail['cc']]);
+
+        /* Send Request */
+        $client = new Client();
+        $response = $client->request('POST', 'http://192.168.3.21/sekawan-site-menu/mail.php', [
+            'multipart' => $params
+        ]);
+
+        echo $response->getBody()->getContents();
+    }
+}
+
+
+function sendMailTSnonSPK()
+{
+    global $consgedb;
+    global $consyncdb;
+    $absTS = [];
+    $absHoliday = [];
+
+    if ($_GET['s'] == "daily") {
+        $date = "=curdate() - 1";
+        $period = date('d-m-Y', strtotime('yesterday'));
+        $add_subject = date('d F Y', strtotime('yesterday')) . " (Daily)";
+    } else if ($_GET['s'] == "weekly") {
+        $period = date('d-m-Y', strtotime('-7 days')) . " S.D " . date('d-m-Y', strtotime('-1 days'));
+        $date = " BETWEEN '" . date('Y-m-d', strtotime('-7 days')) . "' AND '" . date('Y-m-d', strtotime('-1 days')) . "'";
+        $add_subject = $period . " (Weekly)";
     }
 
-    /* Data Mail from sync_db.send_mail */
-    $sql_get = " SELECT * FROM send_mail WHERE name = '" . $_GET['type'] . "' ";
-    $stmt = $consyncdb->prepare($sql_get);
+    $sqlCek = "SELECT 
+                    count(nik) as nik
+                FROM
+                    personal
+                        INNER JOIN
+                    tschedulework sch ON personal.id_personalia = sch.nik
+                WHERE
+                    sch.`date` $date
+                        AND sch.`schedule` = 1
+                        AND personal.status_karyawan in ('Karyawan Tetap','Karyawan Kontrak')";
+    $stmt = $consgedb->prepare($sqlCek);
     $stmt->execute();
+    $cekData = $stmt->fetchAll(PDO::FETCH_COLUMN);
 
-    /* Title Document */
-    $title_document = "temp/Report_TS_NON_WO_" . date('dmY', strtotime('yesterday')) . ".xlsx";
-    require_once 'views/report_ts_non_wo.php';
+    if ($cekData[0] == 0) {
+        return;
+    } else {
 
-    $data_mail = $stmt->fetch(PDO::FETCH_ASSOC);
-    $multipart = [
-        [
-            'name'     => 'token',
-            'contents' => '9ab6578fc863f7ea13cf108bd6c6e499'
-        ],
-        [
-            'name'     => 'subject',
-            'contents' => $data_mail['subject'] . ' ' . date('d F Y', strtotime('yesterday'))
-        ],
-        [
-            'name'     => 'msg',
-            'contents' => $data_mail['msg']
-        ],
-        [
-            'name'     => 'file',
-            'contents' => fopen($title_document, 'r')
-        ]
+        $sql = "SELECT 
+                    *
+                FROM
+                    (SELECT 
+                        ts.nik,
+                            personal.nama,
+                            ts.deptid,
+                            SUM(ts.ts_spk) AS ts_spk,
+                            SUM(ts.non_spk) AS non_spk,
+                            (SUM(ts.ot20) + SUM(ts.rm20)) AS unabs
+                    FROM
+                        (SELECT 
+                        nik,
+                            deptid,
+                            SUM(IF(wono NOT IN ('OT20' , 'RM20'), ((LEFT(duration, 2)) + (RIGHT(duration, 2) / 60) - nonspk), 0)) AS ts_spk,
+                            SUM(IF(nonspk > 0, nonspk, 0)) AS non_spk,
+                            SUM(IF(wono IN ('OT20' , 'OT21'), (LEFT(duration, 2)) + (RIGHT(duration, 2) / 60), 0)) AS ot20,
+                            SUM(IF(wono IN ('RM20' , 'RM21'), (LEFT(duration, 2)) + (RIGHT(duration, 2) / 60), 0)) AS rm20
+                    FROM
+                        trhour
+                    WHERE
+                        tgl $date
+                            AND deptid NOT IN ('MNFT' , 'HRGA')
+                            AND absen IS NULL
+                    GROUP BY nik UNION ALL SELECT 
+                        nik,
+                            deptid,
+                            SUM(IF(wono NOT IN ('OT20' , 'RM20'), ((LEFT(duration, 2)) + (RIGHT(duration, 2) / 60) - nonspk), 0)) AS ts_spk,
+                            SUM(IF(nonspk > 0, nonspk, 0)) AS non_spk,
+                            SUM(IF(wono IN ('OT20' , 'OT21'), (LEFT(duration, 2)) + (RIGHT(duration, 2) / 60), 0)) AS ot20,
+                            SUM(IF(wono IN ('RM20' , 'RM21'), (LEFT(duration, 2)) + (RIGHT(duration, 2) / 60), 0)) AS rm20
+                    FROM
+                        trikl
+                    WHERE
+                        tgllembur $date
+                            AND deptid NOT IN ('MNFT' , 'HRGA')
+                    GROUP BY nik) AS TS
+                    LEFT JOIN PERSONAL ON ts.nik = personal.id_personalia
+                    GROUP BY ts.nik
+                    ORDER BY ts.deptid) AS nonspk
+                        LEFT JOIN
+                    (SELECT 
+                        a.nik,
+                            personal.nama,
+                            personal.departemen,
+                            COUNT(sch.schedule) AS days,
+                            '8' AS hours,
+                            IFNULL(ot.duration, 0) AS ot
+                    FROM
+                        mstts a
+                    LEFT JOIN tschedulework sch ON a.nik = sch.nik
+                    LEFT JOIN personal ON a.nik = personal.id_personalia
+                    LEFT JOIN (SELECT 
+                        nik,
+                            deptid,
+                            tgllembur,
+                            SUM(LEFT(IFNULL(duration, 0), 2)) + SUM(RIGHT(IFNULL(duration, 0), 2) / 60) AS duration
+                    FROM
+                        trikl
+                    WHERE
+                        tgllembur $date
+                    GROUP BY nik) AS ot ON a.nik = ot.nik
+                    WHERE
+                        sch.date $date
+                            AND sch.schedule = 1
+                            AND personal.status_karyawan IN ('Habis Kontrak' , 'Karyawan Kontrak', 'Karyawan Tetap', 'Magang')
+                            AND personal.tgl_resign = '0000-00-00'
+                            AND personal.departemen <> 'MNFT'
+                    GROUP BY a.nik , sch.dept) AS mhcap ON nonspk.nik = mhcap.nik";
+        $stmt = $consgedb->prepare($sql);
+        $stmt->execute();
+        $dataSummary = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    ];
+        $sql = "SELECT 
+                ts.*, personal.nama
+            FROM
+                (SELECT 
+                    hourno,
+                        tgl,
+                        nik,
+                        deptid,
+                        wono,
+                        IF(wono NOT IN ('OT20' , 'RM20'), ((LEFT(duration, 2)) + (RIGHT(duration, 2) / 60) - nonspk), 0) AS ts_spk,
+                        IF(nonspk > 0, nonspk, 0) AS non_spk,
+                        IF(wono IN ('OT20' , 'OT21'), (LEFT(duration, 2)) + (RIGHT(duration, 2) / 60), 0) AS ot20,
+                        IF(wono IN ('RM20' , 'RM21'), (LEFT(duration, 2)) + (RIGHT(duration, 2) / 60), 0) AS rm20,
+                        activity
+                FROM
+                    trhour
+                WHERE
+                    tgl $date
+                        AND absen IS NULL
+                        AND deptid NOT IN ('MNFT' , 'HRGA') UNION ALL SELECT 
+                    iklno,
+                        tgllembur,
+                        nik,
+                        deptid,
+                        wono,
+                        IF(wono NOT IN ('OT20' , 'RM20'), ((LEFT(duration, 2)) + (RIGHT(duration, 2) / 60) - nonspk), 0) AS ts_spk,
+                        IF(nonspk > 0, nonspk, 0) AS non_spk,
+                        IF(wono IN ('OT20' , 'OT21'), (LEFT(duration, 2)) + (RIGHT(duration, 2) / 60), 0) AS ot20,
+                        IF(wono IN ('RM20' , 'RM21'), (LEFT(duration, 2)) + (RIGHT(duration, 2) / 60), 0) AS rm20,
+                        activity
+                FROM
+                    TRIKL
+                WHERE
+                    tgllembur $date
+                        AND deptid NOT IN ('MNFT' , 'HRGA')) AS ts
+                    LEFT JOIN
+                personal ON ts.nik = personal.id_personalia
+            ORDER BY ts.deptid , ts.nik , ts.tgl";
 
-    $params = stringToArrayParam($multipart, ['to' => $data_mail['to'], 'cc' => $data_mail['cc']]);
+        $stmt = $consgedb->prepare($sql);
+        $stmt->execute();
+        $dataDetail = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    /* Send Request */
-    $client = new Client();
-    $response = $client->request('POST', 'http://192.168.3.21/sekawan-site-menu/mail.php', [
-        'multipart' => $params
-    ]);
+        $sql = "SELECT 
+                a.nik,
+                b.nama,
+                b.departemen,
+                tsreg.date,
+                b.tgl_resign,
+                b.status_karyawan,
+                tsreg.duration AS TS
+            FROM
+                mstTS a
+                    LEFT JOIN
+                (SELECT 
+                    tschedulework.nik,
+                    tschedulework.date,
+                        trhour.tgl,
+                        (CASE
+                            WHEN trhour.absen = 'C' THEN 'C'
+                            WHEN trhour.absen = 'S' THEN 'S'
+                            WHEN trhour.absen = 'A' THEN 'A'
+                            WHEN tschedulework.schedule = 0 THEN 'O'
+                            WHEN tschedulework.schedule = 3 THEN 'O'
+                            WHEN tschedulework.schedule = 2 THEN 'O'
+                            ELSE SUM(LEFT(IFNULL(duration, 0), 2)) + SUM(RIGHT(IFNULL(duration, 0), 2) / 60)
+                        END) AS duration
+                FROM
+                    tschedulework
+                LEFT JOIN (SELECT 
+                    nik, duration, absen, tgl
+                FROM
+                    trhour
+                WHERE
+                    tgl $date) AS trhour ON tschedulework.nik = trhour.nik and tschedulework.date = trhour.tgl
+                WHERE
+                    tschedulework.date $date
+                    GROUP BY tschedulework.nik,tschedulework.date) AS tsreg ON a.nik = tsreg.nik
+                    LEFT JOIN
+                personal b ON a.nik = b.id_personalia
+            WHERE
+                b.departemen LIKE '%%%'
+                    AND tsreg.duration IS NULL
+                    OR tsreg.duration < 8
+            HAVING tgl_resign = '0000-00-00'
+                AND departemen <> 'MNFT'
+                AND status_karyawan IN ('Habis Kontrak' , 'Karyawan Kontrak',
+                'Karyawan Tetap',
+                'Magang')
+            ORDER BY b.departemen;";
 
-    echo $response->getBody()->getContents();
+        $stmt = $consgedb->prepare($sql);
+        $stmt->execute();
+        $result = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        foreach ($result as $key => $value) {
+            if ($value['TS'] == 'A' || $value['TS'] == 'C' || $value['TS'] == 'S' || $value['TS'] == 'I' || $value['TS'] == 'O') {
+                $absHoliday[] = $value;
+            } else {
+
+                $absTS[] = $value;
+            }
+        }
+
+        /* Data Mail from sync_db.send_mail */
+        $sql_get = " SELECT * FROM send_mail WHERE name = '" . $_GET['type'] . "' ";
+        $stmt = $consyncdb->prepare($sql_get);
+        $stmt->execute();
+
+        /* Title Document */
+        $title_document = "temp/Report_TS_NON_SPK_" . $add_subject . ".xlsx";
+        require_once 'views/report_ts_non_spk.php';
+
+        $data_mail = $stmt->fetch(PDO::FETCH_ASSOC);
+        $multipart = [
+            [
+                'name'     => 'token',
+                'contents' => '9ab6578fc863f7ea13cf108bd6c6e499'
+            ],
+            [
+                'name'     => 'subject',
+                'contents' => $data_mail['subject'] . ' ' . $add_subject
+            ],
+            [
+                'name'     => 'msg',
+                'contents' => $data_mail['msg']
+            ],
+            [
+                'name'     => 'file',
+                'contents' => fopen($title_document, 'r')
+            ]
+
+        ];
+
+        $params = stringToArrayParam($multipart, ['to' => $data_mail['to'], 'cc' => $data_mail['cc']]);
+
+        /* Send Request */
+        $client = new Client();
+        $response = $client->request('POST', 'http://192.168.3.21/sekawan-site-menu/mail.php', [
+            'multipart' => $params
+        ]);
+
+        echo $response->getBody()->getContents();
+    }
 }
