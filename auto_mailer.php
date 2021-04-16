@@ -48,7 +48,13 @@ switch ($_GET['type']) {
         sendMailTSnonWO();
         break;
     case 'send_mail_ts_non_spk':
-        sendMailTSnonSPK();
+        sendMailTSnonSPK(0);
+        break;
+    case 'send_mail_ts_non_spk_monthly':
+        sendMailTSnonSPK(1);
+        break;
+    case 'send_mail_inquiry_high_value':
+        sendMailINQHighValue();
         break;
 }
 
@@ -380,6 +386,16 @@ function sendMailTSnonWO()
     $absTS = [];
     $absHoliday = [];
 
+    if ($_GET['s'] == "daily") {
+        $date = "=curdate() - 1";
+        $period = date('d-m-Y', strtotime('yesterday'));
+        $add_subject = date('d F Y', strtotime('yesterday')) . " (Daily)";
+    } else if ($_GET['s'] == "weekly") {
+        $period = date('d-m-Y', strtotime('-7 days')) . " S.D " . date('d-m-Y', strtotime('-1 days'));
+        $date = " BETWEEN '" . date('Y-m-d', strtotime('-7 days')) . "' AND '" . date('Y-m-d', strtotime('-1 days')) . "'";
+        $add_subject = $period . " (Weekly)";
+    }
+
     $sqlCek = "SELECT 
                     count(nik) as nik
                 FROM
@@ -387,7 +403,7 @@ function sendMailTSnonWO()
                         INNER JOIN
                     tschedulework sch ON personal.id_personalia = sch.nik
                 WHERE
-                    sch.`date` = CURDATE() -1
+                    sch.`date` $date
                         AND sch.`schedule` = 1
                         AND personal.status_karyawan in ('Karyawan Tetap','Karyawan Kontrak')";
     $stmt = $consgedb->prepare($sqlCek);
@@ -407,8 +423,8 @@ function sendMailTSnonWO()
                     LEFT JOIN
                 personal person ON th.nik = person.id_personalia
             WHERE
-                th.tgl = curdate()-1
-                    AND th.wono IN ('OT20' , 'RM20', 'NOJB')
+                th.tgl $date
+                    AND th.wono IN ('OT21' , 'RM21')
             HAVING departemen <> 'MNFT'
             ORDER BY person.departemen , th.nik";
         $stmt = $consgedb->prepare($sql);
@@ -446,10 +462,10 @@ function sendMailTSnonWO()
                 FROM
                     ts_register
                 WHERE
-                    tgl = CURDATE() - 1) AS ts_register ON tschedulework.nik = ts_register.nik
+                    tgl $date) AS ts_register ON tschedulework.nik = ts_register.nik
                     AND tschedulework.date = ts_register.tgl
                 WHERE
-                    tschedulework.date = CURDATE() - 1
+                    tschedulework.date $date
                 GROUP BY tschedulework.nik) AS tsreg ON a.nik = tsreg.nik
                     LEFT JOIN
                 personal b ON a.nik = b.id_personalia
@@ -483,7 +499,7 @@ function sendMailTSnonWO()
         $stmt->execute();
 
         /* Title Document */
-        $title_document = "temp/Report_TS_NON_WO_" . date('dmY', strtotime('yesterday')) . ".xlsx";
+        $title_document = "temp/Report_TS_NON_WO_" . $add_subject . ".xlsx";
         require_once 'views/report_ts_non_wo.php';
 
         $data_mail = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -494,7 +510,7 @@ function sendMailTSnonWO()
             ],
             [
                 'name'     => 'subject',
-                'contents' => $data_mail['subject'] . ' ' . date('d F Y', strtotime('yesterday'))
+                'contents' => $data_mail['subject'] . ' ' . $add_subject
             ],
             [
                 'name'     => 'msg',
@@ -520,21 +536,29 @@ function sendMailTSnonWO()
 }
 
 
-function sendMailTSnonSPK()
+function sendMailTSnonSPK($type)
 {
     global $consgedb;
     global $consyncdb;
     $absTS = [];
     $absHoliday = [];
 
-    if ($_GET['s'] == "daily") {
-        $date = "=curdate() - 1";
-        $period = date('d-m-Y', strtotime('yesterday'));
-        $add_subject = date('d F Y', strtotime('yesterday')) . " (Daily)";
-    } else if ($_GET['s'] == "weekly") {
-        $period = date('d-m-Y', strtotime('-7 days')) . " S.D " . date('d-m-Y', strtotime('-1 days'));
-        $date = " BETWEEN '" . date('Y-m-d', strtotime('-7 days')) . "' AND '" . date('Y-m-d', strtotime('-1 days')) . "'";
-        $add_subject = $period . " (Weekly)";
+    if ($type == 0) {
+        if ($_GET['s'] == "daily") {
+            $date = "=curdate() - 1";
+            $period = date('d-m-Y', strtotime('yesterday'));
+            $add_subject = date('d F Y', strtotime('yesterday')) . " (Daily)";
+        } else if ($_GET['s'] == "weekly") {
+            $period = date('d-m-Y', strtotime('-7 days')) . " S.D " . date('d-m-Y', strtotime('-1 days'));
+            $date = " BETWEEN '" . date('Y-m-d', strtotime('-7 days')) . "' AND '" . date('Y-m-d', strtotime('-1 days')) . "'";
+            $add_subject = $period . " (Weekly)";
+        }
+    } else {
+        $dateFrom = $_GET['from'];
+        $dateTo = $_GET['to'];
+        $date =  " BETWEEN '{$dateFrom}' AND '{$dateTo}'";
+        $period = date('m-Y', strtotime('-7 days'));
+        $add_subject = date('F Y', strtotime('-7 days')) . " (Monthly)";
     }
 
     $sqlCek = "SELECT 
@@ -547,6 +571,8 @@ function sendMailTSnonSPK()
                     sch.`date` $date
                         AND sch.`schedule` = 1
                         AND personal.status_karyawan in ('Karyawan Tetap','Karyawan Kontrak')";
+    // echo $sqlCek;
+    // die;
     $stmt = $consgedb->prepare($sqlCek);
     $stmt->execute();
     $cekData = $stmt->fetchAll(PDO::FETCH_COLUMN);
@@ -556,7 +582,7 @@ function sendMailTSnonSPK()
     } else {
 
         $sql = "SELECT 
-                    *
+                    *,(days_ori - IFNULL(absents,0)) as days
                 FROM
                     (SELECT 
                         ts.nik,
@@ -569,7 +595,7 @@ function sendMailTSnonSPK()
                         (SELECT 
                         nik,
                             deptid,
-                            SUM(IF(wono NOT IN ('OT20' , 'RM20'), ((LEFT(duration, 2)) + (RIGHT(duration, 2) / 60) - nonspk), 0)) AS ts_spk,
+                            SUM(IF(wono NOT IN ('OT21' , 'RM21','OT20' , 'RM20'), ((LEFT(duration, 2)) + (RIGHT(duration, 2) / 60) - nonspk), 0)) AS ts_spk,
                             SUM(IF(nonspk > 0, nonspk, 0)) AS non_spk,
                             SUM(IF(wono IN ('OT20' , 'OT21'), (LEFT(duration, 2)) + (RIGHT(duration, 2) / 60), 0)) AS ot20,
                             SUM(IF(wono IN ('RM20' , 'RM21'), (LEFT(duration, 2)) + (RIGHT(duration, 2) / 60), 0)) AS rm20
@@ -582,7 +608,7 @@ function sendMailTSnonSPK()
                     GROUP BY nik UNION ALL SELECT 
                         nik,
                             deptid,
-                            SUM(IF(wono NOT IN ('OT20' , 'RM20'), ((LEFT(duration, 2)) + (RIGHT(duration, 2) / 60) - nonspk), 0)) AS ts_spk,
+                            SUM(IF(wono NOT IN ('OT21' , 'RM21','OT20' , 'RM20'), ((LEFT(duration, 2)) + (RIGHT(duration, 2) / 60) - nonspk), 0)) AS ts_spk,
                             SUM(IF(nonspk > 0, nonspk, 0)) AS non_spk,
                             SUM(IF(wono IN ('OT20' , 'OT21'), (LEFT(duration, 2)) + (RIGHT(duration, 2) / 60), 0)) AS ot20,
                             SUM(IF(wono IN ('RM20' , 'RM21'), (LEFT(duration, 2)) + (RIGHT(duration, 2) / 60), 0)) AS rm20
@@ -600,7 +626,7 @@ function sendMailTSnonSPK()
                         a.nik,
                             personal.nama,
                             personal.departemen,
-                            COUNT(sch.schedule) AS days,
+                            COUNT(sch.schedule) AS days_ori,
                             '8' AS hours,
                             IFNULL(ot.duration, 0) AS ot
                     FROM
@@ -623,7 +649,18 @@ function sendMailTSnonSPK()
                             AND personal.status_karyawan IN ('Habis Kontrak' , 'Karyawan Kontrak', 'Karyawan Tetap', 'Magang')
                             AND personal.tgl_resign = '0000-00-00'
                             AND personal.departemen <> 'MNFT'
-                    GROUP BY a.nik , sch.dept) AS mhcap ON nonspk.nik = mhcap.nik";
+                    GROUP BY a.nik , sch.dept) AS mhcap ON nonspk.nik = mhcap.nik
+                    LEFT JOIN
+                        (SELECT 
+                            nik as nik_absen, COUNT(nik) AS absents
+                        FROM
+                            trhour
+                        WHERE
+                            tgl $date
+                                AND absen IN ('A' , 'S', 'C')
+                        GROUP BY nik) AS absents ON nonspk.nik = absents.nik_absen";
+        // echo $sql;
+        // die;
         $stmt = $consgedb->prepare($sql);
         $stmt->execute();
         $dataSummary = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -637,7 +674,7 @@ function sendMailTSnonSPK()
                         nik,
                         deptid,
                         wono,
-                        IF(wono NOT IN ('OT20' , 'RM20'), ((LEFT(duration, 2)) + (RIGHT(duration, 2) / 60) - nonspk), 0) AS ts_spk,
+                        IF(wono NOT IN ('OT21' , 'RM21','OT20' , 'RM20'), ((LEFT(duration, 2)) + (RIGHT(duration, 2) / 60) - nonspk), 0) AS ts_spk,
                         IF(nonspk > 0, nonspk, 0) AS non_spk,
                         IF(wono IN ('OT20' , 'OT21'), (LEFT(duration, 2)) + (RIGHT(duration, 2) / 60), 0) AS ot20,
                         IF(wono IN ('RM20' , 'RM21'), (LEFT(duration, 2)) + (RIGHT(duration, 2) / 60), 0) AS rm20,
@@ -653,7 +690,7 @@ function sendMailTSnonSPK()
                         nik,
                         deptid,
                         wono,
-                        IF(wono NOT IN ('OT20' , 'RM20'), ((LEFT(duration, 2)) + (RIGHT(duration, 2) / 60) - nonspk), 0) AS ts_spk,
+                        IF(wono NOT IN ('OT21' , 'RM21','OT20' , 'RM20'), ((LEFT(duration, 2)) + (RIGHT(duration, 2) / 60) - nonspk), 0) AS ts_spk,
                         IF(nonspk > 0, nonspk, 0) AS non_spk,
                         IF(wono IN ('OT20' , 'OT21'), (LEFT(duration, 2)) + (RIGHT(duration, 2) / 60), 0) AS ot20,
                         IF(wono IN ('RM20' , 'RM21'), (LEFT(duration, 2)) + (RIGHT(duration, 2) / 60), 0) AS rm20,
@@ -716,7 +753,7 @@ function sendMailTSnonSPK()
                 AND departemen <> 'MNFT'
                 AND status_karyawan IN ('Habis Kontrak' , 'Karyawan Kontrak',
                 'Karyawan Tetap',
-                'Magang')
+                'Magang') AND duration <> 'O'
             ORDER BY b.departemen;";
 
         $stmt = $consgedb->prepare($sql);
@@ -772,4 +809,75 @@ function sendMailTSnonSPK()
 
         echo $response->getBody()->getContents();
     }
+}
+
+
+function sendMailINQHighValue()
+{
+    global $consgedb;
+    global $consyncdb;
+
+    /* Get data Inquiry More Than 72 Hour */
+    $sql = "SELECT 
+                wono,
+                `desc`,
+                customer,
+                `date`,
+                selesai,
+                (ts_eng + ot_eng + ts_mfc + ot_mfc) AS ts_hour,
+                (actual_eng + actual_mfc) AS ts_rp,
+                mng_nama,
+                mkt
+            FROM
+                dashboard_box
+            WHERE
+                jenis = 4
+                    AND (ts_eng + ot_eng + ts_mfc + ot_mfc) > 72
+            ORDER BY mng_nama";
+    $stmt = $consgedb->prepare($sql);
+    $stmt->execute();
+    $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    /* die if theres no record */
+    if (count($data) == 0) die;
+
+    /* Data Mail from sync_db.send_mail */
+    $sql_get = " SELECT * FROM send_mail WHERE name = '" . $_GET['type'] . "' ";
+    $stmt = $consyncdb->prepare($sql_get);
+    $stmt->execute();
+
+    /* Title Document */
+    $title_document = "temp/Report_WO_INQ_72_Hours_" . date('dmY') . ".xlsx";
+    require_once 'views/report_inq_hv.php';
+
+    $data_mail = $stmt->fetch(PDO::FETCH_ASSOC);
+    $multipart = [
+        [
+            'name'     => 'token',
+            'contents' => '9ab6578fc863f7ea13cf108bd6c6e499'
+        ],
+        [
+            'name'     => 'subject',
+            'contents' => $data_mail['subject'] . ' ' . date('d F Y')
+        ],
+        [
+            'name'     => 'msg',
+            'contents' => $data_mail['msg']
+        ],
+        [
+            'name'     => 'file',
+            'contents' => fopen($title_document, 'r')
+        ]
+
+    ];
+
+    $params = stringToArrayParam($multipart, ['to' => $data_mail['to'], 'cc' => $data_mail['cc']]);
+
+    /* Send Request */
+    $client = new Client();
+    $response = $client->request('POST', 'http://192.168.3.21/sekawan-site-menu/mail.php', [
+        'multipart' => $params
+    ]);
+
+    echo $response->getBody()->getContents();
 }
